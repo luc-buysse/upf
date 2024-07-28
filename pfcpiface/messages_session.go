@@ -93,6 +93,7 @@ func (pConn *PFCPConn) handleSessionEstablishmentRequest(msg message.Message) (m
 		}
 
 		p.fseidIP = fseidIP
+		p.sampling = DefaultSampling()
 		session.CreatePDR(p)
 		addPDRs = append(addPDRs, p)
 	}
@@ -228,6 +229,7 @@ func (pConn *PFCPConn) handleSessionModificationRequest(msg message.Message) (me
 
 		p.fseidIP = fseidIP
 
+		p.sampling = DefaultSampling()
 		session.CreatePDR(p)
 		addPDRs = append(addPDRs, p)
 	}

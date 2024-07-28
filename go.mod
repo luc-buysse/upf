@@ -11,6 +11,7 @@ require (
 	github.com/ettle/strcase v0.1.1
 	github.com/golang/protobuf v1.5.3
 	github.com/google/gopacket v1.1.19
+	github.com/gorilla/mux v1.8.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/libp2p/go-reuseport v0.1.0
 	github.com/omec-project/pfcpsim v0.1.0
@@ -19,6 +20,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/wmnsk/go-pfcp v0.0.14
+	github.com/evanphx/json-patch/v5 v5.9.0
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 	google.golang.org/grpc v1.56.3
 	google.golang.org/protobuf v1.33.0

@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 
+	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -38,7 +39,7 @@ type ConfigHandler struct {
 	upf *upf
 }
 
-func setupConfigHandler(mux *http.ServeMux, upf *upf) {
+func setupConfigHandler(mux *mux.Router, upf *upf) {
 	cfgHandler := ConfigHandler{upf: upf}
 	mux.Handle("/v1/config/network-slices", &cfgHandler)
 }

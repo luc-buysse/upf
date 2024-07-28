@@ -41,6 +41,8 @@ const (
 	FieldDirection         = "direction"
 	FieldSliceID           = "slice_id"
 	FieldSessionMeterIndex = "session_meter_idx"
+	TimeSampling           = "time_sampling"
+	CountSampling          = "count_sampling"
 	FieldAppMeterIndex     = "app_meter_idx"
 
 	DefaultPriority      = 0
@@ -375,7 +377,9 @@ func (t *P4rtTranslator) withActionParam(action *p4.Action, name string, value i
 
 	p4ActionParam := t.getActionParamByName(p4Action, name)
 	if p4ActionParam == nil {
-		return ErrOperationFailedWithParam("find action param", "action param name", name)
+		return fmt.Errorf("Get action parameter failed for param %s and action %d",
+			name,
+			action.ActionId)
 	}
 
 	param := &p4.Action_Param{
@@ -550,10 +554,13 @@ func (t *P4rtTranslator) BuildApplicationsTableEntry(pdr pdr, sliceID uint8, int
 	return entry, nil
 }
 
-func (t *P4rtTranslator) buildUplinkSessionsEntry(pdr pdr, sessMeterIdx uint32) (*p4.TableEntry, error) {
+func (t *P4rtTranslator) buildUplinkSessionsEntry(pdr pdr, sessMeterIdx uint32,
+	timeSampling uint8, countSampling uint8) (*p4.TableEntry, error) {
 	uplinkBuilderLog := log.WithFields(log.Fields{
 		"pdr":               pdr,
 		"sessionMeterIndex": sessMeterIdx,
+		"timeSampling":      timeSampling,
+		"countSampling":     countSampling,
 	})
 	uplinkBuilderLog.Trace("Building P4rt table entry for sessions_uplink table")
 
@@ -578,6 +585,14 @@ func (t *P4rtTranslator) buildUplinkSessionsEntry(pdr pdr, sessMeterIdx uint32) 
 		return nil, err
 	}
 
+	if err := t.withActionParam(action, TimeSampling, timeSampling); err != nil {
+		return nil, err
+	}
+
+	if err := t.withActionParam(action, CountSampling, countSampling); err != nil {
+		return nil, err
+	}
+
 	entry.Action = &p4.TableAction{
 		Type: &p4.TableAction_Action{Action: action},
 	}
@@ -587,12 +602,15 @@ func (t *P4rtTranslator) buildUplinkSessionsEntry(pdr pdr, sessMeterIdx uint32) 
 	return entry, nil
 }
 
-func (t *P4rtTranslator) buildDownlinkSessionsEntry(pdr pdr, sessMeterIdx uint32, tunnelPeerID uint8, needsBuffering bool) (*p4.TableEntry, error) {
+func (t *P4rtTranslator) buildDownlinkSessionsEntry(pdr pdr, sessMeterIdx uint32, tunnelPeerID uint8, needsBuffering bool,
+	timeSampling uint8, countSampling uint8) (*p4.TableEntry, error) {
 	builderLog := log.WithFields(log.Fields{
 		"pdr":               pdr,
 		"sessionMeterIndex": sessMeterIdx,
 		"tunnelPeerID":      tunnelPeerID,
 		"needsBuffering":    needsBuffering,
+		"timeSampling":      timeSampling,
+		"countSampling":     countSampling,
 	})
 	builderLog.Trace("Building P4rt table entry for sessions_downlink table")
 
@@ -623,6 +641,16 @@ func (t *P4rtTranslator) buildDownlinkSessionsEntry(pdr pdr, sessMeterIdx uint32
 		return nil, err
 	}
 
+	if !needsBuffering {
+		if err := t.withActionParam(action, TimeSampling, timeSampling); err != nil {
+			return nil, err
+		}
+
+		if err := t.withActionParam(action, CountSampling, countSampling); err != nil {
+			return nil, err
+		}
+	}
+
 	entry.Action = &p4.TableAction{
 		Type: &p4.TableAction_Action{Action: action},
 	}
@@ -635,9 +663,9 @@ func (t *P4rtTranslator) buildDownlinkSessionsEntry(pdr pdr, sessMeterIdx uint32
 func (t *P4rtTranslator) BuildSessionsTableEntry(pdr pdr, sessionMeter meter, tunnelPeerID uint8, needsBuffering bool) (*p4.TableEntry, error) {
 	switch pdr.srcIface {
 	case access:
-		return t.buildUplinkSessionsEntry(pdr, sessionMeter.uplinkCellID)
+		return t.buildUplinkSessionsEntry(pdr, sessionMeter.uplinkCellID, pdr.sampling.time, pdr.sampling.count)
 	case core:
-		return t.buildDownlinkSessionsEntry(pdr, sessionMeter.downlinkCellID, tunnelPeerID, needsBuffering)
+		return t.buildDownlinkSessionsEntry(pdr, sessionMeter.downlinkCellID, tunnelPeerID, needsBuffering, pdr.sampling.time, pdr.sampling.count)
 	default:
 		return nil, ErrUnsupported("source interface type of PDR", pdr.srcIface)
 	}

@@ -86,6 +86,11 @@ type meter struct {
 	downlinkCellID uint32
 }
 
+type sampling struct {
+	time  uint8
+	count uint8
+}
+
 // tnlPeerReference <F-SEID (UE session); FAR-ID> pair that
 // uniquely identifies tunnel peer among different FAR IEs of the same UE session.
 type tnlPeerReference struct {
@@ -173,6 +178,13 @@ func toUP4ApplicationFilter(p pdr) up4ApplicationFilter {
 	appFilter.appProto = p.appFilter.proto
 
 	return appFilter
+}
+
+func DefaultSampling() sampling {
+	return sampling{
+		time:  2,
+		count: 2,
+	}
 }
 
 func (m meter) String() string {
@@ -567,7 +579,6 @@ func (up4 *UP4) clearDatapathState() error {
 	err := up4.clearTables()
 	if err != nil {
 		log.Warningf("failed to clear tables: %v", err)
-		return err
 	}
 
 	up4.initAllCounters()
@@ -1265,6 +1276,49 @@ func (up4 *UP4) resetMeters(qers []qer) {
 	}
 }
 
+func (up4 *UP4) readCounter(pdr pdr) error {
+	builderLog := log.WithFields(log.Fields{
+		"Cell ID": pdr.ctrID,
+		"PDR ID":  pdr.pdrID,
+		"F-SEID":  pdr.fseID,
+	})
+	builderLog.Debug("Reading Counter cells")
+
+	resetValue := &p4.CounterData{
+		ByteCount:   0,
+		PacketCount: 0,
+	}
+
+	cntrIndex := &p4.Index{Index: int64(pdr.ctrID)}
+
+	ingressCntrEntry := &p4.CounterEntry{
+		CounterId: p4constants.CounterPreQosPipePreQosCounter,
+		Index:     cntrIndex,
+		Data:      resetValue,
+	}
+
+	egressCntrEntry := &p4.CounterEntry{
+		CounterId: p4constants.CounterPostQosPipePostQosCounter,
+		Index:     cntrIndex,
+		Data:      resetValue,
+	}
+
+	ingressResponse, err := up4.p4client.ReadCounterEntry(ingressCntrEntry)
+	if err != nil {
+		log.Errorln("Error while reading counter ingress counter")
+	}
+
+	egressResponse, err := up4.p4client.ReadCounterEntry(egressCntrEntry)
+	if err != nil {
+		log.Errorln("Error while reading counter egress counter")
+	}
+
+	log.Infoln("Read Ingress: ", ingressResponse)
+	log.Infoln("Read Egress: ", egressResponse)
+
+	return nil
+}
+
 func (up4 *UP4) resetCounter(pdr pdr) error {
 	builderLog := log.WithFields(log.Fields{
 		"Cell ID": pdr.ctrID,
@@ -1320,8 +1374,10 @@ func (up4 *UP4) modifyUP4ForwardingConfiguration(pdrs []pdr, allFARs []far, qers
 		FAR    far
 		ueAddr uint32
 	)
-	for _, pdr := range pdrs {
-		if err = verifyPDR(pdr); err != nil {
+	for i := range pdrs {
+		pdr := &pdrs[i]
+
+		if err = verifyPDR(*pdr); err != nil {
 			return err
 		}
 
@@ -1331,7 +1387,7 @@ func (up4 *UP4) modifyUP4ForwardingConfiguration(pdrs []pdr, allFARs []far, qers
 			"pdr": pdr,
 		})
 		pdrLog.Debug("Installing P4 table entries for PDR")
-		FAR, err = findRelatedFAR(pdr, allFARs)
+		FAR, err = findRelatedFAR(*pdr, allFARs)
 		if err != nil {
 			pdrLog.Warning("no related FAR for PDR found: ", err)
 			return err
@@ -1347,7 +1403,7 @@ func (up4 *UP4) modifyUP4ForwardingConfiguration(pdrs []pdr, allFARs []far, qers
 		}
 
 		tunnelPeerID, exists := up4.getGTPTunnelPeer(tunnelParameters)
-		if !exists && FAR.tunnelTEID != 0 {
+		if !exists && FAR.tunnelTEID != 0 && FAR.dstIntf != 3 /* Exception for CP GTP */ {
 			return ErrNotFoundWithParam("allocated GTP tunnel peer ID", "tunnel params", tunnelParameters)
 		}
 
@@ -1361,7 +1417,9 @@ func (up4 *UP4) modifyUP4ForwardingConfiguration(pdrs []pdr, allFARs []far, qers
 			pdrLog.Debug("Application meter found for PDR: ", sessMeter)
 		} // else: if only 1 QER provided, set sessMeterIdx to 0, and use only per-app metering
 
-		sessionsEntry, err := up4.p4RtTranslator.BuildSessionsTableEntry(pdr, sessMeter, tunnelPeerID.id, FAR.Buffers())
+		sessionsEntry, err := up4.p4RtTranslator.BuildSessionsTableEntry(*pdr, sessMeter, tunnelPeerID.id, FAR.Buffers())
+		pdr.sessionEntry = sessionsEntry
+		log.Infoln("Adding session entry to ", &pdr)
 		if err != nil {
 			return ErrOperationFailedWithReason("build P4rt table entry for Sessions table", err.Error())
 		}
@@ -1384,7 +1442,7 @@ func (up4 *UP4) modifyUP4ForwardingConfiguration(pdrs []pdr, allFARs []far, qers
 
 		if !pdr.IsAppFilterEmpty() {
 			if methodType != p4.Update_DELETE {
-				if entry, appID, err = up4.addInternalApplicationIDAndGetP4rtEntry(pdr); err == nil {
+				if entry, appID, err = up4.addInternalApplicationIDAndGetP4rtEntry(*pdr); err == nil {
 					if entry != nil {
 						entriesToApply = append(entriesToApply, entry)
 					}
@@ -1392,7 +1450,7 @@ func (up4 *UP4) modifyUP4ForwardingConfiguration(pdrs []pdr, allFARs []far, qers
 					applicationID = appID
 				}
 			} else {
-				entry, appID := up4.removeInternalApplicationIDAndGetP4rtEntry(pdr)
+				entry, appID := up4.removeInternalApplicationIDAndGetP4rtEntry(*pdr)
 				if entry != nil {
 					entriesToApply = append(entriesToApply, entry)
 				}
@@ -1415,7 +1473,7 @@ func (up4 *UP4) modifyUP4ForwardingConfiguration(pdrs []pdr, allFARs []far, qers
 
 		var qfi uint8 = DefaultQFI
 
-		relatedQER, err := findRelatedApplicationQER(pdr, qers)
+		relatedQER, err := findRelatedApplicationQER(*pdr, qers)
 		if err != nil {
 			pdrLog.Warning(err)
 		} else {
@@ -1428,7 +1486,7 @@ func (up4 *UP4) modifyUP4ForwardingConfiguration(pdrs []pdr, allFARs []far, qers
 			tc = up4.conf.DefaultTC
 		}
 
-		terminationsEntry, err := up4.p4RtTranslator.BuildTerminationsTableEntry(pdr, appMeter, FAR,
+		terminationsEntry, err := up4.p4RtTranslator.BuildTerminationsTableEntry(*pdr, appMeter, FAR,
 			applicationID, qfi, tc, relatedQER)
 		if err != nil {
 			return ErrOperationFailedWithReason("build P4rt table entry for Terminations table", err.Error())

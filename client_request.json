@@ -1,0 +1,19 @@
+{
+    "subscription":  {
+        "eventList": [
+            {
+                "type": "USER_DATA_USAGE_MEASURES"
+            }
+        ],
+        "eventNotifyUri": "10.200.0.4:9822",
+        "notifyCorrelationId": "hahahihi",
+        "eventReportingMode": {
+            "trigger": "PERIODIC",
+            "repPeriod": 5
+        },
+        "nfId": "d997d381-a672-47c7-aa02-2de02d6873e0",
+        "ueIpAddress": {
+            "ipv4Addr": "10.45.0.2"
+        }
+    }
+}

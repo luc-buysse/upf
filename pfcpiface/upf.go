@@ -1,3 +1,6 @@
+//go:generate echo Running generation...
+//go:generate oapi-codegen /root/upf/nupf-specs/TS29564_Nupf_EventExposure.yaml
+
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2020 Intel Corporation
 

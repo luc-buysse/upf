@@ -10,6 +10,7 @@ import (
 	"math"
 	"net"
 
+	p4 "github.com/p4lang/p4runtime/go/p4/v1"
 	log "github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/ie"
 )
@@ -280,6 +281,9 @@ type pdr struct {
 
 	appFilter applicationFilter
 
+	sampling     sampling
+	sessionEntry *p4.TableEntry
+
 	precedence  uint32
 	pdrID       uint32
 	fseID       uint64
@@ -371,7 +375,10 @@ func (p *pdr) parseSourceInterfaceIE(srcIfaceIE *ie.IE) error {
 	}
 
 	if srcIface == ie.SrcInterfaceCPFunction {
-		return ErrUnsupported("Source Interface CP Function", srcIface)
+		//TODO: add support for CP Interface
+		//return ErrUnsupported("Source Interface CP Function", srcIface)
+		p.srcIface = access
+		p.srcIfaceMask = 0xFF
 	} else if srcIface == ie.SrcInterfaceAccess {
 		p.srcIface = access
 		p.srcIfaceMask = 0xFF

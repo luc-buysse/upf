@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -31,6 +32,7 @@ type PFCPIface struct {
 	node *PFCPNode
 	fp   datapath
 	upf  *upf
+	nupf *Nupf
 
 	httpSrv      *http.Server
 	httpEndpoint string
@@ -60,6 +62,8 @@ func NewPFCPIface(conf Conf) *PFCPIface {
 	pfcpIface.httpEndpoint = ":" + httpPort
 
 	pfcpIface.upf = NewUPF(&conf, pfcpIface.fp)
+	pfcpIface.nupf = NewNUPF(&conf)
+	pfcpIface.nupf.app = pfcpIface
 
 	return pfcpIface
 }
@@ -69,22 +73,27 @@ func (p *PFCPIface) mustInit() {
 	defer p.mu.Unlock()
 
 	p.node = NewPFCPNode(p.upf)
-	httpMux := http.NewServeMux()
 
-	setupConfigHandler(httpMux, p.upf)
+	// Get the router that is already configured to handle Nupf
+	router := mux.NewRouter().StrictSlash(true)
+
+	setupNupf(router, p.nupf)
+	setupConfigHandler(router, p.upf)
 
 	var err error
 
-	p.uc, p.nc, err = setupProm(httpMux, p.upf, p.node)
+	p.uc, p.nc, err = setupProm(router, p.upf, p.node)
 
 	if err != nil {
 		log.Fatalln("setupProm failed", err)
 	}
 
+	log.Infoln("Setting up server at port: ", p.httpEndpoint)
+
 	// Note: due to error with golangci-lint ("Error: G112: Potential Slowloris Attack
 	// because ReadHeaderTimeout is not configured in the http.Server (gosec)"),
 	// the ReadHeaderTimeout is set to the same value as in nginx (client_header_timeout)
-	p.httpSrv = &http.Server{Addr: p.httpEndpoint, Handler: httpMux, ReadHeaderTimeout: 60 * time.Second}
+	p.httpSrv = &http.Server{Addr: p.httpEndpoint, Handler: router, ReadHeaderTimeout: 60 * time.Second}
 }
 
 func (p *PFCPIface) Run() {
@@ -99,6 +108,7 @@ func (p *PFCPIface) Run() {
 	p.mustInit()
 
 	go func() {
+		log.Infoln("Running server...")
 		if err := p.httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalln("http server failed", err)
 		}

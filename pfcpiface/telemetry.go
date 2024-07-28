@@ -4,8 +4,7 @@
 package pfcpiface
 
 import (
-	"net/http"
-
+	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -174,7 +173,7 @@ func (col PfcpNodeCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-func setupProm(mux *http.ServeMux, upf *upf, node *PFCPNode) (*upfCollector, *PfcpNodeCollector, error) {
+func setupProm(mux *mux.Router, upf *upf, node *PFCPNode) (*upfCollector, *PfcpNodeCollector, error) {
 	uc := newUpfCollector(upf)
 	if err := prometheus.Register(uc); err != nil {
 		return nil, nil, err

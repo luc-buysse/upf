@@ -26,6 +26,7 @@ const (
 // Conf : Json conf struct.
 type Conf struct {
 	Mode                     string           `json:"mode"`
+	InstanceID               string           `json:"instance_id"`
 	AccessIface              IfaceType        `json:"access"`
 	CoreIface                IfaceType        `json:"core"`
 	CPIface                  CPIfaceInfo      `json:"cpiface"`
